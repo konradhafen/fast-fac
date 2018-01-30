@@ -31,21 +31,13 @@ def flowDirection(dem):
     return fdir
 
 def flowDirectionTest(dem):
-    temp = np.empty((dem.shape[0]+4, dem.shape[1]+4)) #create temp array with buffer around dem
+    temp = np.empty((dem.shape[0]+2, dem.shape[1]+2)) #create temp array with buffer around dem
     temp.fill(-9.0) #fill with value greater than the dem max
-    temp[2:-2, 2:-2] = dem #fill in dem values (creates wall so all cells will flow inward)
+    temp[1:-1, 1:-1] = dem #fill in dem values (creates wall so all cells will flow inward)
     dem = temp #set new dem
     mask = np.where(dem==-9.0, 0, 1)
-    dvs = np.swapaxes(np.where(mask==0), 0, 1)
-    edgeval = np.nanmax(dem)+2.0
-    for dv in dvs:
-        if not 0 in dv:
-            vals = mask[dv[0]-1:dv[0]+1, dv[1]-1:dv[1]+1]
-            if 1 in vals:
-                dem[dv[0], dv[1]] = edgeval
 
-    dem = dem[1:-1, 1:-1]
-    dem[dem == -9.0] = np.nan
+    dem[dem == -9.0] = np.nanmax(dem)+2.0
 
 
     fdir = np.empty((dem.shape[0], dem.shape[1]))
@@ -63,4 +55,6 @@ def flowDirectionTest(dem):
     direction = (-gradient).argmax(axis=0)
     fdir[1:-1, 1:-1] = code.take(direction)
 
-    return fdir[1:-1, 1:-1] * mask[2:-2, 2:-2]
+    # print "dem"
+    # print dem
+    return fdir[1:-1, 1:-1] * mask[1:-1, 1:-1]
