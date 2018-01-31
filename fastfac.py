@@ -44,6 +44,8 @@ def facgroup(dem, fdir, nodata):
     fdirnew = np.empty((group.shape))
     fdirnew.fill(nodata)
     fdirnew[1:-1, 1:-1] = fdir
+    fac = np.empty((group.shape))
+    fac.fill(0)
     while np.nanmax(demnew) != nodata:
         cells = np.swapaxes(np.where(demnew == np.nanmax(demnew)), 0, 1)
         for cell in cells:
@@ -51,17 +53,24 @@ def facgroup(dem, fdir, nodata):
             fdirWin = fdirnew[cell[0]-1:cell[0]+2, cell[1]-1:cell[1]+2].reshape(1, 9)
             gathers = 0
             maxgather = 0
+            accum = 0
             for i in range(0, 9):
                 if drainsToMe(i, fdirWin[0, i]):
                     gathers += 1
+                    accum += fac[cell[0] + ROW_OFFSET[i], cell[1] + COL_OFFSET[i]] + 1
                     if group[cell[0] + ROW_OFFSET[i], cell[1] + COL_OFFSET[i]] > maxgather:
                         maxgather = group[cell[0] + ROW_OFFSET[i], cell[1] + COL_OFFSET[i]]
 
             if gathers > 0: group[cell[0], cell[1]] = maxgather + 1
             else: group[cell[0], cell[1]] = 1
             demnew[cell[0], cell[1]] = nodata
+            fac[cell[0], cell[1]] = accum
 
-    return group[1:-1, 1:-1]
+    demnew[1:-1, 1:-1] = dem
+    fac = np.where(group == 1, 0, fac)
+    fac = np.where(demnew == nodata, nodata, fac)
+    group = np.where(demnew == nodata, nodata, group)
+    return group[1:-1, 1:-1], fac[1:-1, 1:-1]
 
 
 
@@ -101,9 +110,10 @@ def flowDirectionTest(dem, nodata):
     temp.fill(nodata) #fill with value greater than the dem max
     temp[1:-1, 1:-1] = dem #fill in dem values (creates wall so all cells will flow inward)
     dem = temp #set new dem
-    mask = np.where(dem==-9.0, 0, 1)
+    mask = np.where(dem==nodata, 0, 1)
 
-    dem[dem == nodata] = np.nanmax(dem)+2.0
+    demfill = np.nanmax(dem)+2.0
+    dem[dem == nodata] = demfill
 
     fdir = np.empty((dem.shape[0], dem.shape[1]))
     fdir.fill(0)
@@ -117,6 +127,9 @@ def flowDirectionTest(dem, nodata):
         gradient[k] = (dem[1 + i: dem.shape[0] - 1 + i, 1 + j: dem.shape[1] - 1 + j] - dem[1: dem.shape[0] - 1,
                                                                                        1: dem.shape[1] - 1]) / d
     direction = (-gradient).argmax(axis=0)
+    dem[dem == demfill] = np.nan
+
     fdir[1:-1, 1:-1] = code.take(direction)
+    fdir[dem == np.nanmin(dem)] = 0
 
     return fdir[1:-1, 1:-1] * mask[1:-1, 1:-1]

@@ -18,7 +18,17 @@ dem2 = np.array([[-9.0, -9.0, -9.0, -9.0, -9.0, -9.0, -9.0],
                 [28.0, 27.0, 27.0, 24.0, 27.0, 27.5, -9.0]
                 ])
 
+dem3 = np.array([[9.0, 8.0, 7.0, 8.0, 9.0],
+                 [8.0, 7.0, 6.0, 7.0, 8.0],
+                 [7.0, 6.0, 5.0, 6.0, 7.0],
+                 [6.0, 5.0, 4.0, 5.0, 6.0],
+                 [5.0, 4.0, 3.0, 4.0, 5.0]])
 #print flowDirection(dem)
 nodata = -9.0
-fdir = flowDirectionTest(dem2, nodata)
-print facgroup(dem2, fdir, nodata)
+fdir = flowDirectionTest(dem3, nodata)
+group, fac = facgroup(dem3, fdir, nodata)
+print group
+print "fac"
+print fac
+print "fdir"
+print fdir
