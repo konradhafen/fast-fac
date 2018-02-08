@@ -46,8 +46,12 @@ def facgroup(dem, fdir, nodata):
     fdirnew[1:-1, 1:-1] = fdir
     fac = np.empty((group.shape))
     fac.fill(0)
+    demnan = dem
+    demnan[demnan<0.0] = np.nan
+
     while np.nanmax(demnew) != nodata:
         cells = np.swapaxes(np.where(demnew == np.nanmax(demnew)), 0, 1)
+        print len(cells), np.nanmax(demnew), np.nanmin(dem)
         for cell in cells:
             demWin = demnew[cell[0]-1:cell[0]+2, cell[1]-1:cell[1]+2].reshape(1, 9)
             fdirWin = fdirnew[cell[0]-1:cell[0]+2, cell[1]-1:cell[1]+2].reshape(1, 9)
@@ -77,34 +81,51 @@ def facgroup(dem, fdir, nodata):
 def fastfac(dem, fdir, group):
     fac = np.array(dem.shape)
 
-def flowDirection(dem):
+def flowsTo(fdir, nodata):
     """
-    Quick flow direction implementation with ESRI coding. Does not accurately sort out flow direction in flat areas, or
-    raster edges.
+    Calculate the linear index of the cell each cell flows to
 
     Args:
-        dem: Numpy array of elevation values
+        fdir: flow direction raster
 
     Returns:
-        numpy array with ESRI flow directions
 
     """
-    fdir = np.empty((dem.shape[0], dem.shape[1]))
-    fdir.fill(0)
-    gradient = np.empty((8, dem.shape[0]-2, dem.shape[1]-2), dtype = np.float)
-    code = np.empty(8, dtype=np.int)
-    for k in range(8):
-        theta = -k * np.pi / 4
-        code[k] = 2 ** k
-        j, i = np.int(1.5 * np.cos(theta)), -np.int(1.5 * np.sin(theta))
-        d = np.linalg.norm([i, j])
-        gradient[k] = (dem[1 + i: dem.shape[0] - 1 + i, 1 + j: dem.shape[1] - 1 + j] - dem[1: dem.shape[0] - 1, 1: dem.shape[1] - 1]) / d
+    global FLOW_DIR
+    FLOW_DIR = np.array([32, 64, 128, 16, 0, 1, 8, 4, 2])
+    global ROW_OFFSET
+    ROW_OFFSET = np.array([-1, -1, -1, 0, 0, 0, 1, 1, 1])
+    global COL_OFFSET
+    COL_OFFSET = np.array([-1, 0, 1, -1, 0, 1, -1, 0, 1])
+    fdirpallete = np.array([0,1,2,4,8,16,32,64,128])
+    rowkey = np.array([0,0,1,1,1,0,-1,-1,-1])
+    colkey = np.array([0,1,1,0,-1,-1,-1,0,1])
 
-    direction = (-gradient).argmax(axis=0)
-    fdir[1:-1, 1:-1] = code.take(direction)
+    nrow, ncol = fdir.shape
+    flowto = np.empty(fdir.shape)
+    flowto.fill(nodata)
+    lindex = np.arange(fdir.shape[0]*fdir.shape[1]).reshape(fdir.shape)
+    index = np.digitize(fdir.ravel(), fdirpallete, right=True)
+    rowoff = rowkey[index]
+    coloff = colkey[index]
+    lindex = lindex[fdir != nodata]
+    dirs = fdir[fdir != nodata]
+    flowto = lindex + ncol*rowoff + coloff
+    print flowto.reshape(fdir.shape)
+    print fdir
+    print lindex.reshape(fdir.shape)
 
-    return fdir
 
+    #offsets = np.where(FLOW_DIR == dirs)
+    #test = lindex + ncol*ROW_OFFSET[offsets] + COL_OFFSET[offsets]
+    #print offsets
+    # index = np.digitize(fdir.ravel(), fdirpallete, right=True)
+    # print(rowkey[index].reshape(fdir.shape))
+    # print(colkey[index].reshape(fdir.shape))
+    # print fdir
+
+
+    return flowto
 def flowDirectionTest(dem, nodata):
     temp = np.empty((dem.shape[0]+2, dem.shape[1]+2)) #create temp array with buffer around dem
     temp.fill(nodata) #fill with value greater than the dem max
