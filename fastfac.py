@@ -34,6 +34,34 @@ def drainsToMe(index, fdir):
     else:
         return False
 
+def getColOffsetAscendingFDIR():
+    return np.array([0,1,1,0,-1,-1,-1,0,1])
+
+def getColOffsetIndexed():
+    return np.array([-1, 0, 1, -1, 0, 1, -1, 0, 1])
+
+def getFlowDirectionAscending(code = "ESRI"):
+    if code == "ESRI":
+        return np.array([0,1,2,4,8,16,32,64,128])
+    elif code == "TauDEM":
+        return None #Needs to be updated
+    else:
+        return None
+
+def getFlowDirectionIndexed(code = "ESRI"):
+    if code == "ESRI":
+        return np.array([32, 64, 128, 16, 0, 1, 8, 4, 2])
+    elif code == "TauDEM":
+        return None #Needs to be updated
+    else:
+        return None
+
+def getRowOffsetAscendingFDIR():
+    return np.array([0,0,1,1,1,0,-1,-1,-1])
+
+def getRowOffsetIndexed():
+    return np.array([-1, -1, -1, 0, 0, 0, 1, 1, 1])
+
 def facgroup(dem, fdir, nodata):
     setGlobals()
     group = np.empty((dem.shape[0]+2, dem.shape[1]+2))
@@ -51,7 +79,7 @@ def facgroup(dem, fdir, nodata):
 
     while np.nanmax(demnew) != nodata:
         cells = np.swapaxes(np.where(demnew == np.nanmax(demnew)), 0, 1)
-        print len(cells), np.nanmax(demnew), np.nanmin(dem)
+        #print len(cells), np.nanmax(demnew), np.nanmin(dem)
         for cell in cells:
             demWin = demnew[cell[0]-1:cell[0]+2, cell[1]-1:cell[1]+2].reshape(1, 9)
             fdirWin = fdirnew[cell[0]-1:cell[0]+2, cell[1]-1:cell[1]+2].reshape(1, 9)
@@ -76,68 +104,90 @@ def facgroup(dem, fdir, nodata):
     group = np.where(demnew == nodata, nodata, group)
     return group[1:-1, 1:-1], fac[1:-1, 1:-1]
 
+def accumStop(array1, array2):
+    result = False
+    if array1 == array2:
+        result = True
+    return result
 
+def flowaccum(flowto, groups, nodata):
+    print "NCELLS", flowto.shape[0] * flowto.shape[1]
+    fac = np.zeros(flowto.shape)
+    index = np.arange(flowto.shape[0] * flowto.shape[1]).reshape(flowto.shape)
+    go = True
+    ngroup = 1
+    while go:
+        if ngroup%10000 == 0: print "ITERATION", ngroup
+        group = flowto[groups==ngroup]
+        # groupfac = fac[groups==ngroup]
+        # groupindex = index[groups==ngroup]
+        # print len(group), ngroup, go
+        # print , group, index[groups==ngroup]
+        if np.array_equal(group, index[groups == ngroup]):
+            go = False
+            print "stopping after",ngroup
+            break
 
-def fastfac(dem, fdir, group):
-    fac = np.array(dem.shape)
+        ngroup += 1
+        indices, counts = np.unique(group, return_counts=True)
+        # weights = np.take(np.bincount(groupindex, weights=np.take(fac, groupindex)), groupindex)
+        # exaccum = np.take(np.bincount(group, weights=weights), indices)
+        # print "group", group
+        # print "indices", indices
+        # print "count", counts
+        # print "add", np.take(np.bincount(group, weights=groupfac), indices)
+        # print "result", np.add(counts, np.take(np.bincount(group, weights=groupfac), indices))
 
-def flowsTo(fdir, nodata):
+        #exaccum = np.take(fac, indices)
+        #np.put(fac, indices, np.add(np.add(exaccum, counts), np.take(np.bincount(group, weights=groupfac), indices)))
+        #np.put(fac, indices, np.add(exaccum, counts))
+        np.put(groups, indices, ngroup)
+        #print groups
+
+    fac[flowto==nodata] = nodata
+    return fac, groups
+
+def fastfac(fdir, nodata, fdircode = "ESRI"):
+    flowto = flowsTo(fdir, nodata, fdircode)
+    group = firstGroup(flowto, nodata)
+    return
+
+def firstGroup(flowto, nodata):
+    lindex = np.arange(flowto.shape[0]*flowto.shape[1])
+    group1 = np.in1d(lindex, flowto.ravel(), invert=True)
+    group1 = group1.reshape(flowto.shape)
+    group1[flowto == nodata] = False
+    return np.where(group1, 1, 0)
+
+def flowsTo(fdir, nodata, fdircode = "ESRI"):
     """
-    Calculate the linear index of the cell each cell flows to
+    Using flow direction, determine the linear index of the cell that each cell flows into
 
     Args:
-        fdir: flow direction raster
+        fdir: 2d flow direction array
+        nodata: no data value
+        fdircode: flow direction encoding, can be either "ESRI" (default) or "TauDEM"
 
     Returns:
+        2d array of linear (1d) indices
 
     """
-    global FLOW_DIR
-    FLOW_DIR = np.array([32, 64, 128, 16, 0, 1, 8, 4, 2])
-    global ROW_OFFSET
-    ROW_OFFSET = np.array([-1, -1, -1, 0, 0, 0, 1, 1, 1])
-    global COL_OFFSET
-    COL_OFFSET = np.array([-1, 0, 1, -1, 0, 1, -1, 0, 1])
-    fdirpallete = np.array([0,1,2,4,8,16,32,64,128])
-    rowkey = np.array([0,0,1,1,1,0,-1,-1,-1])
-    colkey = np.array([0,1,1,0,-1,-1,-1,0,1])
-
-    nrow, ncol = fdir.shape
-    flowto = np.empty(fdir.shape)
-    flowto.fill(nodata)
-    lindex = np.arange(fdir.shape[0]*fdir.shape[1]).reshape(fdir.shape)
-    index = np.digitize(fdir.ravel(), fdirpallete, right=True)
-    rowoff = rowkey[index]
-    coloff = colkey[index]
-    lindex = lindex[fdir != nodata]
-    dirs = fdir[fdir != nodata]
-    flowto = lindex + ncol*rowoff + coloff
-    print flowto.reshape(fdir.shape)
-    print fdir
-    print lindex.reshape(fdir.shape)
-
-
-    #offsets = np.where(FLOW_DIR == dirs)
-    #test = lindex + ncol*ROW_OFFSET[offsets] + COL_OFFSET[offsets]
-    #print offsets
-    # index = np.digitize(fdir.ravel(), fdirpallete, right=True)
-    # print(rowkey[index].reshape(fdir.shape))
-    # print(colkey[index].reshape(fdir.shape))
-    # print fdir
-
-
+    nrow, ncol = fdir.shape  # get number of rows and number of columns
+    lindex = np.arange(nrow * ncol) #linear indices
+    index = np.digitize(fdir.ravel(), getFlowDirectionAscending(fdircode), right=True) #index of flow direction value (0-8)
+    rowoff = getRowOffsetAscendingFDIR()[index] #replace flow direction index with corresponding row offset
+    coloff = getColOffsetAscendingFDIR()[index] #replace flow direction index with corresponding column offset
+    flowto = (lindex + ncol * rowoff + coloff).reshape(fdir.shape) #add row and column offsets to linear indices to determine which cell each cell flows to
+    flowto[fdir==nodata] = nodata #maintain no data values
     return flowto
-def flowDirectionTest(dem, nodata):
+
+def flowDirectionOutward(dem, nodata): #all edge cells flow outward
     temp = np.empty((dem.shape[0]+2, dem.shape[1]+2)) #create temp array with buffer around dem
     temp.fill(nodata) #fill with value greater than the dem max
     temp[1:-1, 1:-1] = dem #fill in dem values (creates wall so all cells will flow inward)
     dem = temp #set new dem
-    mask = np.where(dem==nodata, 0, 1)
 
-    demfill = np.nanmax(dem)+2.0
-    dem[dem == nodata] = demfill
-
-    fdir = np.empty((dem.shape[0], dem.shape[1]))
-    fdir.fill(0)
+    fdir = np.zeros(dem.shape)
     gradient = np.empty((8, dem.shape[0] - 2, dem.shape[1] - 2), dtype=np.float)
     code = np.empty(8, dtype=np.int)
     for k in range(8):
@@ -148,9 +198,37 @@ def flowDirectionTest(dem, nodata):
         gradient[k] = (dem[1 + i: dem.shape[0] - 1 + i, 1 + j: dem.shape[1] - 1 + j] - dem[1: dem.shape[0] - 1,
                                                                                        1: dem.shape[1] - 1]) / d
     direction = (-gradient).argmax(axis=0)
-    dem[dem == demfill] = np.nan
 
     fdir[1:-1, 1:-1] = code.take(direction)
-    fdir[dem == np.nanmin(dem)] = 0
+    fdir[dem==nodata] = nodata
 
-    return fdir[1:-1, 1:-1] * mask[1:-1, 1:-1]
+    return fdir[1:-1, 1:-1]
+
+def flowDirectionTestInward(dem, nodata): #all edge cells flow inward
+    temp = np.empty((dem.shape[0]+2, dem.shape[1]+2)) #create temp array with buffer around dem
+    temp.fill(nodata) #fill with value greater than the dem max
+    temp[1:-1, 1:-1] = dem #fill in dem values (creates wall so all cells will flow inward)
+    dem = temp #set new dem
+
+    demfill = np.nanmax(dem)+2.0
+    dem[dem == nodata] = demfill
+
+    fdir = np.zeros(dem.shape)
+    gradient = np.empty((8, dem.shape[0] - 2, dem.shape[1] - 2), dtype=np.float)
+    code = np.empty(8, dtype=np.int)
+    for k in range(8):
+        theta = -k * np.pi / 4
+        code[k] = 2 ** k
+        j, i = np.int(1.5 * np.cos(theta)), -np.int(1.5 * np.sin(theta))
+        d = np.linalg.norm([i, j])
+        gradient[k] = (dem[1 + i: dem.shape[0] - 1 + i, 1 + j: dem.shape[1] - 1 + j] - dem[1: dem.shape[0] - 1,
+                                                                                       1: dem.shape[1] - 1]) / d
+    direction = (-gradient).argmax(axis=0)
+    #dem[dem == demfill] = np.nan
+
+    fdir[1:-1, 1:-1] = code.take(direction)
+    #hack to set outlet cell to valid value
+    fdir[dem == np.nanmin(dem)] = 0
+    fdir[dem == demfill] = nodata
+
+    return fdir[1:-1, 1:-1]
